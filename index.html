@@ -756,13 +756,8 @@
               <label for="rsvpGuests" class="block text-[11px] font-semibold uppercase tracking-[0.18em] sm:tracking-[0.2em] mb-2" style="color: var(--gold-accent);">
                 Number of Guests
               </label>
-              <select id="rsvpGuests" class="w-full px-4 py-3 rounded-xl royal-input text-base sm:text-sm">
-                <option value="1 Guest">1 Guest</option>
-                <option value="2 Guests" selected>2 Guests</option>
-                <option value="3 Guests">3 Guests</option>
-                <option value="4 Guests">4 Guests</option>
-                <option value="5+ Family Members">5+ Family Members</option>
-              </select>
+              <input type="text" id="rsvpGuests" placeholder="e.g. 2 Guests / Family of 4"
+                class="w-full px-4 py-3 rounded-xl royal-input text-base sm:text-sm" />
             </div>
           </div>
 
@@ -770,13 +765,8 @@
             <label for="rsvpCouple" class="block text-[11px] font-semibold uppercase tracking-[0.18em] sm:tracking-[0.2em] mb-2" style="color: var(--gold-accent);">
               Attending For
             </label>
-            <select id="rsvpCouple" class="w-full px-4 py-3 rounded-xl royal-input text-base sm:text-sm">
-              <option value="Both Weddings (Saeed &amp; Hadiya + Saba &amp; Sameer)" selected>
-                Both Weddings (Saeed &amp; Hadiya + Saba &amp; Sameer)
-              </option>
-              <option value="Saeed &amp; Hadiya">Saeed &amp; Hadiya</option>
-              <option value="Saba &amp; Sameer">Saba &amp; Sameer</option>
-            </select>
+            <input type="text" id="rsvpCouple" placeholder="e.g. Both Weddings (Saeed &amp; Hadiya + Saba &amp; Sameer)"
+              class="w-full px-4 py-3 rounded-xl royal-input text-base sm:text-sm" />
           </div>
 
           <div>
@@ -1106,9 +1096,22 @@
       let usingYouTube = false;
       let isPlaying = false;
       let pillPeekTimer = null;
+      let hasStartedOnce = false;
+      const SONG_START_SECONDS = 8; // Starts cleanly at "Tere naam se shuru hua"
 
       if (nasheedAudio) {
         nasheedAudio.volume = 0.9;
+      }
+
+      function fadeInAudio(audioEl) {
+        if (!audioEl) return;
+        audioEl.volume = 0.1;
+        let vol = 0.1;
+        const fadeTimer = setInterval(() => {
+          vol = Math.min(0.92, vol + 0.08);
+          audioEl.volume = vol;
+          if (vol >= 0.92) clearInterval(fadeTimer);
+        }, 120);
       }
 
       function peekNasheedPill() {
@@ -1142,6 +1145,7 @@
             modestbranding: 1,
             playsinline: 1,
             rel: 0,
+            start: SONG_START_SECONDS,
           };
           if (window.location.origin && window.location.origin !== 'null') {
             playerVars.origin = window.location.origin;
@@ -1157,20 +1161,24 @@
                 ytReady = true;
                 event.target.setVolume(90);
                 if (usingYouTube && isPlaying) {
+                  event.target.seekTo(SONG_START_SECONDS, true);
                   event.target.unMute();
                   event.target.playVideo();
                 }
               },
               onStateChange: function (event) {
                 if (event.data === YT.PlayerState.ENDED) {
-                  event.target.seekTo(0);
+                  event.target.seekTo(SONG_START_SECONDS, true);
                   event.target.playVideo();
                 }
               },
               onError: function () {
                 if (currentVideoIdx + 1 < BISMILLAH_VIDEO_IDS.length && ytPlayer && typeof ytPlayer.loadVideoById === 'function') {
                   currentVideoIdx++;
-                  ytPlayer.loadVideoById({ videoId: BISMILLAH_VIDEO_IDS[currentVideoIdx] });
+                  ytPlayer.loadVideoById({
+                    videoId: BISMILLAH_VIDEO_IDS[currentVideoIdx],
+                    startSeconds: SONG_START_SECONDS,
+                  });
                   if (usingYouTube && isPlaying) ytPlayer.playVideo();
                 }
               },
@@ -1219,11 +1227,29 @@
 
         if (nasheedAudio) {
           try {
+            if (!hasStartedOnce) {
+              hasStartedOnce = true;
+              if (nasheedAudio.readyState >= 1) {
+                nasheedAudio.currentTime = SONG_START_SECONDS;
+              } else {
+                nasheedAudio.addEventListener(
+                  'loadedmetadata',
+                  () => {
+                    nasheedAudio.currentTime = SONG_START_SECONDS;
+                  },
+                  { once: true }
+                );
+              }
+            }
             const playPromise = nasheedAudio.play();
             if (playPromise !== undefined) {
-              playPromise.catch(() => {
-                startYouTubeBackup();
-              });
+              playPromise
+                .then(() => {
+                  fadeInAudio(nasheedAudio);
+                })
+                .catch(() => {
+                  startYouTubeBackup();
+                });
             }
           } catch (e) {
             startYouTubeBackup();
@@ -1542,8 +1568,8 @@
         rsvpForm.addEventListener('submit', e => {
           e.preventDefault();
           const name = document.getElementById('rsvpName').value.trim();
-          const couple = document.getElementById('rsvpCouple').value;
-          const guests = document.getElementById('rsvpGuests').value;
+          const couple = document.getElementById('rsvpCouple').value.trim() || 'Both Weddings (Saeed & Hadiya + Saba & Sameer)';
+          const guests = document.getElementById('rsvpGuests').value.trim() || 'Not specified';
 
           const phone = appConfig.whatsappNumber.replace(/\D/g, '');
           const lines = [
